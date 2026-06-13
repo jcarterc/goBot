@@ -28,6 +28,7 @@ func _show_lobby() -> void:
 
 func _start_game() -> void:
 	_clear_all()
+	Engine.time_scale = 1.0
 	GameState.start_run()
 	_arena = Arena.new()
 	_arena.configure(GameState.player_bot_type, GameState.target_population)

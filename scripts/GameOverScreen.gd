@@ -75,13 +75,14 @@ func _submit() -> void:
 
 func _show_leaderboard_and_actions() -> void:
 	_clear(_content)
-	_content.add_child(UITheme.heading("LEADERBOARD", 14, UITheme.ACCENT_WARM))
-	if GameState.leaderboard.is_empty():
+	var board := GameState.active_leaderboard()
+	_content.add_child(UITheme.heading("DAILY LEADERBOARD" if GameState.daily_mode else "LEADERBOARD", 14, UITheme.ACCENT_WARM))
+	if board.is_empty():
 		_content.add_child(UITheme.heading("no records yet", 13, Color(0.7, 0.75, 0.85)))
 	else:
-		var n: int = mini(8, GameState.leaderboard.size())
+		var n: int = mini(8, board.size())
 		for i in n:
-			var e: Dictionary = GameState.leaderboard[i]
+			var e: Dictionary = board[i]
 			var color := UITheme.ACCENT_WARM if int(e["score"]) == GameState.score else UITheme.TEXT
 			_content.add_child(UITheme.heading("%d.   %s    %s" % [i + 1, e["name"], _commas(int(e["score"]))], 14, color))
 
@@ -89,12 +90,26 @@ func _show_leaderboard_and_actions() -> void:
 	row.add_theme_constant_override("separation", 12)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_content.add_child(row)
-	var again := UITheme.make_button("Play Again", UITheme.ACCENT, Vector2(150, 50))
+	var again := UITheme.make_button("Play Again", UITheme.ACCENT, Vector2(140, 50))
 	again.pressed.connect(func(): play_again.emit())
 	row.add_child(again)
-	var change := UITheme.make_button("Change Bot", UITheme.ACCENT, Vector2(150, 50))
+	var change := UITheme.make_button("Change Bot", UITheme.ACCENT, Vector2(140, 50))
 	change.pressed.connect(func(): change_bot.emit())
 	row.add_child(change)
+	var share := UITheme.make_button("Save Image", UITheme.ACCENT_WARM, Vector2(140, 50))
+	share.pressed.connect(_share)
+	row.add_child(share)
+
+# Capture the screen as a shareable result card: download on web, save otherwise.
+func _share() -> void:
+	var img := get_viewport().get_texture().get_image()
+	var buf := img.save_png_to_buffer()
+	if OS.has_feature("web"):
+		var b64 := Marshalls.raw_to_base64(buf)
+		var js := "(function(){var a=document.createElement('a');a.href='data:image/png;base64,%s';a.download='gobot_score.png';document.body.appendChild(a);a.click();a.remove();})();" % b64
+		JavaScriptBridge.eval(js, true)
+	else:
+		img.save_png("user://gobot_score.png")
 
 func _clear(node: Node) -> void:
 	for c in node.get_children():

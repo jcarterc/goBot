@@ -10,17 +10,26 @@ const DANGER_TIER := 2.6  # Large and above
 var player: Bot
 var spawner: BotSpawner
 var camera: CameraController
+var powerups: PowerUpManager
 
 var _size_label: Label
 var _score_label: Label
 var _power_label: Label
+var _combo_label: Label
 var _crosshair: Label
 var _danger: ColorRect
+var _vignette: TextureRect
+var _minimap: MiniMap
+var _boss_bar: ProgressBar
+var _boss_label: Label
 
-func setup(p_player: Bot, p_spawner: BotSpawner, p_camera: CameraController) -> void:
+signal respawn_requested
+
+func setup(p_player: Bot, p_spawner: BotSpawner, p_camera: CameraController, p_powerups: PowerUpManager) -> void:
 	player = p_player
 	spawner = p_spawner
 	camera = p_camera
+	powerups = p_powerups
 
 func _ready() -> void:
 	_size_label = _label(Control.PRESET_TOP_LEFT, Vector2(16, 12), 18, HORIZONTAL_ALIGNMENT_LEFT)
@@ -39,16 +48,93 @@ func _ready() -> void:
 	_crosshair.visible = false
 	add_child(_crosshair)
 
+	var vp := get_viewport().get_visible_rect().size
 	_danger = ColorRect.new()
 	_danger.color = Color(0.8, 0.1, 0.1, 0.0)
 	_danger.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	_danger.custom_minimum_size = Vector2(0, 8)
-	_danger.size = Vector2(get_viewport().get_visible_rect().size.x, 8)
-	_danger.position = Vector2(0, get_viewport().get_visible_rect().size.y - 8)
+	_danger.size = Vector2(vp.x, 8)
+	_danger.position = Vector2(0, vp.y - 8)
 	add_child(_danger)
+
+	# Full-screen red vignette that intensifies with danger.
+	_vignette = TextureRect.new()
+	_vignette.texture = _make_vignette()
+	_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vignette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_vignette.stretch_mode = TextureRect.STRETCH_SCALE
+	_vignette.modulate = Color(1, 0.1, 0.1, 0.0)
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_vignette)
+
+	# Combo banner (centre-top).
+	_combo_label = Label.new()
+	_combo_label.add_theme_font_size_override("font_size", 30)
+	_combo_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.2))
+	_combo_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_combo_label.add_theme_constant_override("outline_size", 5)
+	_combo_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_combo_label.position = Vector2(-100, 60)
+	_combo_label.custom_minimum_size = Vector2(200, 0)
+	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_combo_label)
+
+	# Radar (bottom-right) + expand button.
+	_minimap = MiniMap.new()
+	_minimap.setup(player, spawner, powerups)
+	add_child(_minimap)
+	var expand := UITheme.make_button("Map (M)", UITheme.ACCENT, Vector2(96, 32))
+	expand.position = Vector2(vp.x - 116, vp.y - 196)
+	expand.pressed.connect(_toggle_map)
+	add_child(expand)
+
+	# Respawn button (top-right) — recovers a stuck/frozen bot.
+	var respawn := UITheme.make_button("Respawn", Color(1.0, 0.5, 0.4), Vector2(120, 40))
+	respawn.position = Vector2(vp.x - 136, 50)
+	respawn.set_anchors_preset(Control.PRESET_TOP_RIGHT, false)
+	respawn.position = Vector2(vp.x - 136, 50)
+	respawn.pressed.connect(func(): respawn_requested.emit())
+	add_child(respawn)
+
+	# Boss health bar (top-centre, hidden until a boss is active).
+	_boss_label = Label.new()
+	_boss_label.text = "BOSS"
+	_boss_label.add_theme_font_size_override("font_size", 16)
+	_boss_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.5))
+	_boss_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_boss_label.position = Vector2(-40, 8)
+	_boss_label.visible = false
+	add_child(_boss_label)
+	_boss_bar = ProgressBar.new()
+	_boss_bar.show_percentage = false
+	_boss_bar.custom_minimum_size = Vector2(280, 14)
+	_boss_bar.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_boss_bar.position = Vector2(-140, 28)
+	_boss_bar.visible = false
+	add_child(_boss_bar)
 
 	if not GameState.score_changed.is_connected(_on_score_changed):
 		GameState.score_changed.connect(_on_score_changed)
+
+func _toggle_map() -> void:
+	_minimap.toggle_expand()
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
+		_toggle_map()
+
+# A soft radial vignette texture: transparent centre, opaque edges.
+func _make_vignette() -> ImageTexture:
+	var n := 128
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := Vector2(n, n) * 0.5
+	var maxd := c.length()
+	for y in n:
+		for x in n:
+			var d := Vector2(x, y).distance_to(c) / maxd
+			var a := clampf((d - 0.55) / 0.45, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a * a))
+	return ImageTexture.create_from_image(img)
 
 func _label(preset: int, pos: Vector2, font_size: int, align: int) -> Label:
 	var l := Label.new()
@@ -71,6 +157,26 @@ func _process(_delta: float) -> void:
 	if camera != null:
 		_crosshair.visible = not camera.third_person
 	_danger.color.a = lerpf(_danger.color.a, 0.55 if _danger_near() else 0.0, 0.1)
+	var threat: float = spawner.threat_level() if spawner != null else 0.0
+	_vignette.modulate.a = lerpf(_vignette.modulate.a, threat * 0.6, 0.1)
+	if GameState.combo > 1:
+		_combo_label.text = "COMBO  x%d" % GameState.combo
+		_combo_label.modulate.a = 1.0
+	else:
+		_combo_label.modulate.a = lerpf(_combo_label.modulate.a, 0.0, 0.1)
+	# Keep the radar pinned bottom-right as its size changes on expand.
+	var vp := get_viewport().get_visible_rect().size
+	_minimap.position = Vector2(vp.x - _minimap.size.x - 16, vp.y - _minimap.size.y - 16)
+	# Boss health bar.
+	var boss: Bot = spawner.current_boss() if spawner != null else null
+	if boss != null and is_instance_valid(boss):
+		_boss_bar.visible = true
+		_boss_label.visible = true
+		_boss_bar.max_value = boss.max_hp
+		_boss_bar.value = boss.hp
+	else:
+		_boss_bar.visible = false
+		_boss_label.visible = false
 
 func _power_text() -> String:
 	var parts: Array[String] = []
@@ -80,6 +186,7 @@ func _power_text() -> String:
 		parts.append("INVINCIBLE %ds" % ceili(player.invincible_t))
 	if player.magnet_t > 0.0:
 		parts.append("MAGNET %ds" % ceili(player.magnet_t))
+	parts.append("DASH READY" if player.dash_cd <= 0.0 else "DASH %.0fs" % ceil(player.dash_cd))
 	return "   ".join(parts)
 
 func _danger_near() -> bool:

@@ -14,6 +14,7 @@ var _density_buttons := {}
 var _slider: HSlider
 var _slider_label: Label
 var _touch_check: CheckButton
+var _lb_box: Control
 
 func _ready() -> void:
 	var bg := ColorRect.new()
@@ -70,33 +71,78 @@ func _ready() -> void:
 	_slider.value_changed.connect(_on_slider)
 	root.add_child(_slider)
 
+	root.add_child(_heading("BOT SKIN"))
+	var skin_row := HBoxContainer.new()
+	skin_row.add_theme_constant_override("separation", 6)
+	skin_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	root.add_child(skin_row)
+	for i in GameState.SKINS.size():
+		var info: Dictionary = GameState.SKINS[i]
+		var unlocked := GameState.skin_unlocked(i)
+		var b := UITheme.make_button(info["name"] if unlocked else "🔒 %d" % int(info["unlock"]), UITheme.ACCENT, Vector2(96, 36))
+		b.disabled = not unlocked
+		if unlocked:
+			b.pressed.connect(func(): GameState.selected_skin = i)
+		skin_row.add_child(b)
+
 	_touch_check = CheckButton.new()
 	_touch_check.text = "On-screen touch controls"
 	_touch_check.button_pressed = GameState.touch_enabled
 	_touch_check.toggled.connect(func(v): GameState.touch_enabled = v)
 	root.add_child(_touch_check)
 
+	var daily := CheckButton.new()
+	daily.text = "Daily Challenge (today's seed)"
+	daily.button_pressed = GameState.daily_mode
+	daily.toggled.connect(_on_daily_toggled)
+	root.add_child(daily)
+
 	var play := UITheme.make_button("PLAY", UITheme.ACCENT_WARM, Vector2(0, 56))
 	play.add_theme_font_size_override("font_size", 24)
 	play.pressed.connect(_on_play)
 	root.add_child(play)
 
-	root.add_child(_build_leaderboard())
+	root.add_child(_build_stats())
+	_lb_box = _build_leaderboard()
+	root.add_child(_lb_box)
 
 	_select_bot(_bot_type)
 	_select_density(_density)
 
+func _on_daily_toggled(v: bool) -> void:
+	GameState.daily_mode = v
+	# Rebuild the leaderboard to show the relevant board.
+	if _lb_box != null and is_instance_valid(_lb_box):
+		var parent := _lb_box.get_parent()
+		var idx := _lb_box.get_index()
+		_lb_box.queue_free()
+		_lb_box = _build_leaderboard()
+		parent.add_child(_lb_box)
+		parent.move_child(_lb_box, idx)
+
+func _build_stats() -> Control:
+	var s := GameState.stats
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	box.add_child(_heading("LIFETIME", 12, Color(0.6, 0.7, 0.85)))
+	box.add_child(_heading("games %d   eaten %d   biggest %.1f   best run %.0fs" % [
+		int(s.get("games", 0)), int(s.get("bots_eaten", 0)),
+		float(s.get("biggest", 0.0)), float(s.get("longest", 0.0))], 12, Color(0.7, 0.75, 0.85)))
+	return box
+
 func _build_leaderboard() -> Control:
+	var board := GameState.active_leaderboard()
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
-	box.add_child(UITheme.heading("HIGH SCORES", 13, UITheme.ACCENT_WARM))
-	if GameState.leaderboard.is_empty():
+	var title := "DAILY HIGH SCORES" if GameState.daily_mode else "HIGH SCORES"
+	box.add_child(UITheme.heading(title, 13, UITheme.ACCENT_WARM))
+	if board.is_empty():
 		box.add_child(UITheme.heading("no records yet — be the first", 12, Color(0.6, 0.65, 0.75)))
 	else:
-		var n: int = mini(5, GameState.leaderboard.size())
+		var n: int = mini(5, board.size())
 		for i in n:
-			var e: Dictionary = GameState.leaderboard[i]
-			box.add_child(UITheme.heading("%d.  %s   %s" % [i + 1, e["name"], _commas(e["score"])], 13, UITheme.TEXT))
+			var e: Dictionary = board[i]
+			box.add_child(UITheme.heading("%d.  %s   %s" % [i + 1, e["name"], _commas(int(e["score"]))], 13, UITheme.TEXT))
 	return box
 
 func _commas(n: int) -> String:
@@ -117,9 +163,9 @@ func _title(text: String, size: int) -> Label:
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	return l
 
-func _heading(text: String) -> Label:
-	var l := _title(text, 14)
-	l.add_theme_color_override("font_color", Color(0.6, 0.75, 0.95))
+func _heading(text: String, size := 14, color := Color(0.6, 0.75, 0.95)) -> Label:
+	var l := _title(text, size)
+	l.add_theme_color_override("font_color", color)
 	return l
 
 func _select_bot(t: String) -> void:

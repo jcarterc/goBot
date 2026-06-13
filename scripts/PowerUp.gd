@@ -7,6 +7,8 @@ const INFO := {
 	"speed": {"color": Color(1.0, 0.85, 0.2), "label": "SPEED BOOST"},
 	"invincible": {"color": Color(0.4, 0.9, 1.0), "label": "INVINCIBLE"},
 	"magnet": {"color": Color(1.0, 0.4, 0.9), "label": "MAGNET"},
+	"shrink": {"color": Color(0.6, 1.0, 0.5), "label": "SHRINK RAY"},
+	"decoy": {"color": Color(0.9, 0.6, 1.0), "label": "DECOY"},
 }
 
 var kind := "speed"
