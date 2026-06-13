@@ -1,0 +1,72 @@
+name: Build & Deploy Voxel Sandbox
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot engine + web template
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/bin/godot
+            ~/.local/share/godot/export_templates
+          key: godot-4.6.3-web-v1
+
+      - name: Download Godot headless binary
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fL https://github.com/godotengine/godot/releases/download/4.6.3-stable/Godot_v4.6.3-stable_linux.x86_64.zip \
+            -o /tmp/godot.zip
+          unzip /tmp/godot.zip -d /tmp
+          sudo mv /tmp/Godot_v4.6.3-stable_linux.x86_64 /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+          rm /tmp/godot.zip
+
+      - name: Download & install web export template
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.6.3.stable
+          echo "4.6.3.stable" > ~/.local/share/godot/export_templates/4.6.3.stable/version.txt
+          curl -fL https://github.com/godotengine/godot/releases/download/4.6.3-stable/Godot_v4.6.3-stable_export_templates.tpz \
+            -o /tmp/templates.tpz
+          unzip /tmp/templates.tpz "templates/web_nothreads_release.zip" -d /tmp/tpl
+          cp /tmp/tpl/templates/web_nothreads_release.zip \
+            ~/.local/share/godot/export_templates/4.6.3.stable/
+          rm -rf /tmp/templates.tpz /tmp/tpl
+
+      - name: Import project
+        run: godot --headless --path . --import 2>&1 || true
+
+      - name: Export web build
+        run: |
+          mkdir -p build
+          godot --headless --path . --export-release "Web" build/index.html 2>&1
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
