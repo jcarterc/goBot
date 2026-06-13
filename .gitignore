@@ -1,0 +1,8 @@
+# Godot editor / build artifacts
+.godot/
+/build/
+export_presets.cfg.bak
+
+# Node
+node_modules/
+*.import

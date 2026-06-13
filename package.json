@@ -1,12 +1,13 @@
 {
-  "name": "voxel",
+  "name": "gobot-arena",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "goBot Arena — a 3D endless-survival voxel game (Godot 4.6, HTML5/WASM).",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "serve": "node server.js",
+    "test": "node tests/arena.smoke.mjs"
   },
-  "keywords": [],
+  "keywords": ["godot", "voxel", "game", "webassembly"],
   "author": "",
   "license": "ISC",
   "dependencies": {
