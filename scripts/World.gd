@@ -10,6 +10,14 @@ var _noise := FastNoiseLite.new()
 var _tree_noise := FastNoiseLite.new()
 var _material: StandardMaterial3D
 
+# Playable world bounds in voxel coordinates (square, centred near origin).
+const MIN_COORD := -RADIUS * Chunk.W            # -48
+const MAX_COORD := (RADIUS + 1) * Chunk.W - 1   # 63
+
+# goBot Arena drives terrain generation itself and supplies its own bots,
+# camera and HUD, so it sets this true to skip the sandbox player/hotbar.
+var arena_mode := false
+
 func _ready() -> void:
 	_noise.noise_type = FastNoiseLite.TYPE_PERLIN
 	_noise.frequency = 0.025
@@ -25,7 +33,8 @@ func _ready() -> void:
 
 	_setup_environment()
 	_generate_world()
-	_spawn_player_and_hud()
+	if not arena_mode:
+		_spawn_player_and_hud()
 
 func _setup_environment() -> void:
 	var sun := DirectionalLight3D.new()
@@ -176,3 +185,36 @@ func _chunk_key(gx: int, gz: int) -> Vector2i:
 
 func spawn_height(gx: int, gz: int) -> int:
 	return maxi(_height_at(gx, gz), SEA_LEVEL) + 3
+
+# --- Arena helpers (used by bots for ground following and steering) ---
+
+# Top solid-terrain block index at this column (ignores water fill).
+func terrain_height(gx: int, gz: int) -> int:
+	return _height_at(gx, gz)
+
+# True where the solid terrain sits below sea level (a water cell).
+func is_water(gx: int, gz: int) -> bool:
+	return _height_at(gx, gz) < SEA_LEVEL
+
+# World-space Y a ground bot's feet should rest on. Bots ride the water
+# surface rather than sinking through it, but AI steers them away from water.
+func ground_y(gx: int, gz: int) -> float:
+	return float(maxi(_height_at(gx, gz), SEA_LEVEL) + 1)
+
+# A random voxel column on the spawn ring near the world edge.
+func random_edge_xz() -> Vector2:
+	var margin := 4
+	var lo := MIN_COORD + margin
+	var hi := MAX_COORD - margin
+	var edge := randi() % 4
+	match edge:
+		0: return Vector2(lo, randf_range(lo, hi))
+		1: return Vector2(hi, randf_range(lo, hi))
+		2: return Vector2(randf_range(lo, hi), lo)
+		_: return Vector2(randf_range(lo, hi), hi)
+
+func clamp_to_world(p: Vector3) -> Vector3:
+	var margin := 2.0
+	p.x = clampf(p.x, MIN_COORD + margin, MAX_COORD - margin)
+	p.z = clampf(p.z, MIN_COORD + margin, MAX_COORD - margin)
+	return p
