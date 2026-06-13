@@ -39,12 +39,17 @@ func _setup_scene() -> void:
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	e.ambient_light_energy = 0.8
+	e.glow_enabled = true
+	e.glow_intensity = 1.0
+	e.glow_bloom = 0.2
+	e.glow_hdr_threshold = 0.9
 	env.environment = e
 	add_child(env)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(deg_to_rad(-50), deg_to_rad(35), 0)
 	sun.light_energy = 1.2
+	sun.shadow_enabled = true
 	add_child(sun)
 
 	var cam := Camera3D.new()

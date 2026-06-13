@@ -135,6 +135,66 @@ static func _flyer_eat() -> AudioStreamWAV:
 	_cache["eat_flyer"] = _wav(out, false)
 	return _cache["eat_flyer"]
 
+static func ui_click() -> AudioStreamWAV:
+	if _cache.has("ui"):
+		return _cache["ui"]
+	var n := RATE / 16
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var env := exp(-float(i) / (n * 0.25))
+		out[i] = sin(TAU * 760.0 * float(i) / RATE) * env * 0.45
+	_cache["ui"] = _wav(out, false)
+	return _cache["ui"]
+
+static func powerup_pickup() -> AudioStreamWAV:
+	if _cache.has("pickup"):
+		return _cache["pickup"]
+	# Rising shimmer chirp with a bell-like decay.
+	var n := RATE / 2
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph := 0.0
+	var ph2 := 0.0
+	for i in n:
+		var f := float(i) / n
+		var freq := 420.0 + f * 900.0
+		ph += TAU * freq / RATE
+		ph2 += TAU * (freq * 1.5) / RATE
+		var env := exp(-f * 3.0) + 0.3 * sin(f * PI)
+		out[i] = (sin(ph) * 0.6 + sin(ph2) * 0.3) * env * 0.5
+	_cache["pickup"] = _wav(out, false)
+	return _cache["pickup"]
+
+# Ambient background music: a slow sine pad over a gentle arpeggio. ~8s loop.
+static func music_loop() -> AudioStreamWAV:
+	if _cache.has("music"):
+		return _cache["music"]
+	var seconds := 8
+	var n := RATE * seconds
+	var out := PackedFloat32Array()
+	out.resize(n)
+	# Four chords (roots), each held two seconds; simple major-ish triads.
+	var roots := [220.0, 174.61, 130.81, 196.0]
+	var step := RATE / 4  # arpeggio note every 0.25s
+	for i in n:
+		var chord_idx := (i / (RATE * 2)) % roots.size()
+		var root: float = roots[chord_idx]
+		var triad := [root, root * 1.26, root * 1.5]
+		# Sustained pad.
+		var pad := 0.0
+		for f in triad:
+			pad += sin(TAU * f * float(i) / RATE)
+		pad = pad / triad.size() * 0.12
+		# Plucked arpeggio one octave up.
+		var s := i % step
+		var note: float = triad[(i / step) % triad.size()] * 2.0
+		var aenv := exp(-float(s) / (step * 0.4))
+		var arp := sin(TAU * note * float(i) / RATE) * aenv * 0.16
+		out[i] = clampf(pad + arp, -1.0, 1.0)
+	_cache["music"] = _wav(out, true)
+	return _cache["music"]
+
 static func death_sound() -> AudioStreamWAV:
 	if _cache.has("death"):
 		return _cache["death"]

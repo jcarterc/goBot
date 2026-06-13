@@ -37,9 +37,7 @@ func _ready() -> void:
 	bot_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	root.add_child(bot_row)
 	for t in ["walker", "roller", "flyer"]:
-		var b := Button.new()
-		b.text = t.capitalize()
-		b.custom_minimum_size = Vector2(130, 46)
+		var b := UITheme.make_button(t.capitalize(), UITheme.ACCENT, Vector2(130, 46))
 		b.pressed.connect(_select_bot.bind(t))
 		bot_row.add_child(b)
 		_bot_buttons[t] = b
@@ -56,9 +54,7 @@ func _ready() -> void:
 		GameState.Density.CUSTOM: "Custom",
 	}
 	for d in labels:
-		var b := Button.new()
-		b.text = labels[d]
-		b.custom_minimum_size = Vector2(100, 40)
+		var b := UITheme.make_button(labels[d], UITheme.ACCENT, Vector2(100, 40))
 		b.pressed.connect(_select_density.bind(d))
 		dens_row.add_child(b)
 		_density_buttons[d] = b
@@ -80,15 +76,39 @@ func _ready() -> void:
 	_touch_check.toggled.connect(func(v): GameState.touch_enabled = v)
 	root.add_child(_touch_check)
 
-	var play := Button.new()
-	play.text = "PLAY"
-	play.custom_minimum_size = Vector2(0, 56)
+	var play := UITheme.make_button("PLAY", UITheme.ACCENT_WARM, Vector2(0, 56))
 	play.add_theme_font_size_override("font_size", 24)
 	play.pressed.connect(_on_play)
 	root.add_child(play)
 
+	root.add_child(_build_leaderboard())
+
 	_select_bot(_bot_type)
 	_select_density(_density)
+
+func _build_leaderboard() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(UITheme.heading("HIGH SCORES", 13, UITheme.ACCENT_WARM))
+	if GameState.leaderboard.is_empty():
+		box.add_child(UITheme.heading("no records yet — be the first", 12, Color(0.6, 0.65, 0.75)))
+	else:
+		var n: int = mini(5, GameState.leaderboard.size())
+		for i in n:
+			var e: Dictionary = GameState.leaderboard[i]
+			box.add_child(UITheme.heading("%d.  %s   %s" % [i + 1, e["name"], _commas(e["score"])], 13, UITheme.TEXT))
+	return box
+
+func _commas(n: int) -> String:
+	var s := str(n)
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return out
 
 func _title(text: String, size: int) -> Label:
 	var l := Label.new()

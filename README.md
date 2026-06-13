@@ -19,7 +19,24 @@ After the GitHub Actions deploy completes, the game is live at:
   **world density** → the arena.
 - Eat a bot you're at least 15% larger than and you absorb part of its size.
   Get touched by something 15% larger than you and it's game over.
-- The world always holds bots ranging from marble-sized to building-sized.
+- The world always holds bots ranging from marble-sized to building-sized, and
+  it **escalates as you grow** — apex predators keep spawning scaled to your
+  size, so there's never a "too big to die" dead end.
+- Reach apex size and you hit the **Domination** screen: keep reigning (the
+  world keeps escalating) or start a new run.
+
+### Power-ups
+Floating pickups spawn around the world:
+
+| Power-up | Effect |
+|---|---|
+| **Speed Boost** | Move much faster for a few seconds |
+| **Invincible** | Can't be eaten — and you can eat *anything* you touch |
+| **Magnet** | Pulls nearby smaller bots toward you |
+
+### Leaderboard
+Beat a top-10 score and you enter three initials on death. Scores persist in
+the browser (`localStorage`) and show on the lobby and game-over screens.
 
 ### Bot types
 
@@ -73,12 +90,27 @@ scripts/Bot.gd          base bot: size, eating, growth, AI state machine
 scripts/WalkerBot.gd / RollerBot.gd / FlyerBot.gd
 scripts/BotSpawner.gd   population, batched AI, culling/LOD, respawns
 scripts/BotAI.gd        (state logic lives in Bot.gd)
-scripts/SoundSynth.gd   procedurally baked audio (no external files)
-scripts/CameraController.gd  first/third person + input
+scripts/SoundSynth.gd   procedurally baked audio + background music (no files)
+scripts/CameraController.gd  first/third person, input, camera shake
 scripts/TouchControls.gd     on-screen mobile controls
-scripts/ArenaHUD.gd     size / score / danger HUD
-scripts/GameOverScreen.gd
+scripts/PowerUp.gd / PowerUpManager.gd  pickups, magnet, effects
+scripts/FloatingText.gd      "+score" / power-up popups
+scripts/UITheme.gd           shared menu styling
+scripts/ArenaHUD.gd     size / score / power-up / danger HUD
+scripts/GameOverScreen.gd    death + initials entry + leaderboard
+scripts/VictoryScreen.gd     apex "Domination" screen
 ```
+
+## Graphics & audio
+
+- Real-time sun shadows and bloom/glow so emissive accents, trails and
+  power-ups pop (works in the GL Compatibility renderer used for web).
+- Metallic bots with glowing eyes; **Walkers have articulating limbs** that
+  swing as they move; Rollers and Flyers leave motion trails.
+- Particle bursts on every eat and on growth; camera shake on big eats / death.
+- Fully procedural audio: per-bot movement loops, eat/death effects, UI clicks,
+  power-up jingles, and an ambient background music loop — all generated in
+  GDScript, no external audio assets.
 
 ## State bridge (tests)
 
