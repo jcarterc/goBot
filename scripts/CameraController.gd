@@ -5,6 +5,7 @@ extends Node3D
 # into the player's steering direction; the bot moves where the camera faces.
 
 const MOUSE_SENS := 0.0025
+const TOUCH_SENS := 0.0011
 const FOLLOW_LAG := 0.12
 
 var player: Bot
@@ -86,8 +87,8 @@ func _process(delta: float) -> void:
 	if touch != null and is_instance_valid(touch) and GameState.touch_enabled:
 		var d := touch.consume_look()
 		if d != Vector2.ZERO:
-			rotate_y(-d.x * MOUSE_SENS)
-			pitch = clampf(pitch - d.y * MOUSE_SENS, -1.3, 0.9)
+			rotate_y(-d.x * TOUCH_SENS)
+			pitch = clampf(pitch - d.y * TOUCH_SENS, -1.3, 0.9)
 	_apply_view()
 	_apply_shake(delta)
 	_clamp_camera()

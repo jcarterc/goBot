@@ -21,6 +21,7 @@ var _crosshair: Label
 var _danger: ColorRect
 var _vignette: TextureRect
 var _minimap: MiniMap
+var _map_btn: Button
 var _boss_bar: ProgressBar
 var _boss_label: Label
 
@@ -86,10 +87,9 @@ func _ready() -> void:
 	_minimap = MiniMap.new()
 	_minimap.setup(player, spawner, powerups)
 	add_child(_minimap)
-	var expand := UITheme.make_button("Map (M)", UITheme.ACCENT, Vector2(96, 32))
-	expand.position = Vector2(vp.x - 116, vp.y - 196)
-	expand.pressed.connect(_toggle_map)
-	add_child(expand)
+	_map_btn = UITheme.make_button("Map (M)", UITheme.ACCENT, Vector2(96, 32))
+	_map_btn.pressed.connect(_toggle_map)
+	add_child(_map_btn)
 
 	# Respawn button (top-right) — recovers a stuck/frozen bot.
 	var respawn := UITheme.make_button("Respawn", Color(1.0, 0.5, 0.4), Vector2(120, 40))
@@ -168,9 +168,12 @@ func _process(_delta: float) -> void:
 		_combo_label.modulate.a = 1.0
 	else:
 		_combo_label.modulate.a = lerpf(_combo_label.modulate.a, 0.0, 0.1)
-	# Keep the radar pinned bottom-right as its size changes on expand.
+	# Keep the radar pinned bottom-right; lift it above the touch buttons.
 	var vp := get_viewport().get_visible_rect().size
-	_minimap.position = Vector2(vp.x - _minimap.size.x - 16, vp.y - _minimap.size.y - 16)
+	var bottom_margin := 270.0 if GameState.touch_enabled else 16.0
+	var my := maxf(96.0, vp.y - _minimap.size.y - bottom_margin)
+	_minimap.position = Vector2(vp.x - _minimap.size.x - 16, my)
+	_map_btn.position = Vector2(vp.x - _minimap.size.x - 16, my - 38)
 	# Boss health bar.
 	var boss: Bot = spawner.current_boss() if spawner != null else null
 	if boss != null and is_instance_valid(boss):
