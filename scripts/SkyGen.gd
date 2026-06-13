@@ -4,12 +4,18 @@ extends RefCounted
 # a sun with glow, and a distant mountain silhouette along the horizon) and wraps
 # it in a PanoramaSkyMaterial. No external image needed.
 
+static var _cached: Sky
+
 static func make_sky() -> Sky:
+	# Cache the panorama so retrying a run doesn't regenerate the texture.
+	if _cached != null:
+		return _cached
 	var img := _generate(1024, 512)
 	var mat := PanoramaSkyMaterial.new()
 	mat.panorama = ImageTexture.create_from_image(img)
 	var sky := Sky.new()
 	sky.sky_material = mat
+	_cached = sky
 	return sky
 
 static func _generate(w: int, h: int) -> Image:

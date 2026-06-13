@@ -7,6 +7,7 @@ var _arena: Arena
 var _gameover: GameOverScreen
 var _victory: VictoryScreen
 var _evolution: EvolutionScreen
+var _loading: LoadingScreen
 
 func _ready() -> void:
 	_show_title()
@@ -31,12 +32,21 @@ func _start_game() -> void:
 	_clear_all()
 	Engine.time_scale = 1.0
 	GameState.start_run()
+	# Show a loading overlay and let it paint before the (blocking) world build.
+	_loading = LoadingScreen.new()
+	add_child(_loading)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	_arena = Arena.new()
 	_arena.configure(GameState.player_bot_type, GameState.target_population)
 	_arena.game_over.connect(_on_game_over)
 	_arena.dominated.connect(_on_dominated)
 	_arena.evolve.connect(_on_evolve)
 	add_child(_arena)
+	await get_tree().process_frame
+	if _loading != null and is_instance_valid(_loading):
+		_loading.queue_free()
+	_loading = null
 
 func _on_game_over(killer_type: String) -> void:
 	# Freeze the arena under the overlay.
@@ -93,7 +103,7 @@ func _resume_from_victory() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _clear_all() -> void:
-	for n in [_title, _lobby, _arena, _gameover, _victory, _evolution]:
+	for n in [_title, _lobby, _arena, _gameover, _victory, _evolution, _loading]:
 		if n != null and is_instance_valid(n):
 			n.queue_free()
 	_title = null
@@ -102,3 +112,4 @@ func _clear_all() -> void:
 	_gameover = null
 	_victory = null
 	_evolution = null
+	_loading = null
