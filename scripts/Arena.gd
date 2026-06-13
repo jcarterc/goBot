@@ -4,6 +4,7 @@ extends Node3D
 # the bot population, the follow camera and the HUD. Emits game_over on death.
 
 signal game_over(killer_type: String)
+signal dominated
 
 var bot_type := "roller"
 var target_population := 70
@@ -14,6 +15,8 @@ var spawner: BotSpawner
 var camera: CameraController
 var hud: ArenaHUD
 var touch: TouchControls
+var powerups: PowerUpManager
+var _music: AudioStreamPlayer
 
 func configure(p_bot_type: String, p_target: int) -> void:
 	bot_type = p_bot_type
@@ -24,9 +27,25 @@ func _ready() -> void:
 	_build_spawner()
 	_build_player()
 	_build_camera_and_hud()
+	_build_powerups()
+	_build_music()
 	spawner.spawn_initial()
 	spawner.player_died.connect(_on_player_died)
+	spawner.player_dominated.connect(func(): dominated.emit())
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _build_powerups() -> void:
+	powerups = PowerUpManager.new()
+	powerups.setup(world, player, spawner)
+	add_child(powerups)
+
+func _build_music() -> void:
+	_music = AudioStreamPlayer.new()
+	_music.stream = SoundSynth.music_loop()
+	_music.volume_db = -14.0
+	_music.bus = "Master"
+	add_child(_music)
+	_music.play()
 
 func _build_world() -> void:
 	world = World.new()
@@ -55,6 +74,7 @@ func _build_camera_and_hud() -> void:
 	camera = CameraController.new()
 	camera.setup(player)
 	add_child(camera)
+	spawner.camera = camera
 
 	touch = TouchControls.new()
 	touch.setup(player)

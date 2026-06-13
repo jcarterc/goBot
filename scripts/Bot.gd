@@ -28,6 +28,12 @@ var desired_dir := Vector3.ZERO  # steering input; horizontal for ground bots
 var speed_mult := 1.0
 var alive := true
 
+# Player power-up state (seconds remaining). Ignored for AI bots.
+var speed_boost_t := 0.0
+var invincible_t := 0.0
+var magnet_t := 0.0
+var _shield: CSGSphere3D
+
 # AI state machine
 var state := "wander"
 var target: Bot = null
@@ -48,8 +54,25 @@ func setup(p_type: String, p_size: float, p_world: World, p_spawner: BotSpawner)
 func _ready() -> void:
 	_build_body()
 	_setup_audio()
+	if is_player_controlled:
+		_build_shield()
 	apply_size(true)
 	_wander_dir = _random_horizontal()
+
+func _build_shield() -> void:
+	_shield = CSGSphere3D.new()
+	_shield.radius = BODY_UNIT * 1.6
+	_shield.radial_segments = 16
+	_shield.rings = 8
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.4, 0.9, 1.0, 0.22)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.emission_enabled = true
+	m.emission = Color(0.3, 0.8, 1.0)
+	m.emission_energy_multiplier = 1.5
+	_shield.material = m
+	_shield.visible = false
+	add_child(_shield)
 
 # Subclasses construct their CSG body here.
 func _build_body() -> void:
@@ -98,16 +121,29 @@ func overlaps(other: Bot) -> bool:
 			return false
 	return true
 
-func attempt_eat(other: Bot) -> bool:
+func attempt_eat(other: Bot, force := false) -> bool:
 	if not alive or not other.alive:
 		return false
-	if not can_eat(other) or not overlaps(other):
+	if not overlaps(other):
+		return false
+	if not force and not can_eat(other):
 		return false
 	var gained := other.size_tier
+	var at := other.global_position
 	other.on_eaten(self)
 	grow(gained)
 	_play_eat()
+	_spawn_burst(at, Color(1.0, 0.85, 0.35), int(clampf(gained * 6.0, 6.0, 40.0)))
 	return true
+
+func is_invincible() -> bool:
+	return invincible_t > 0.0
+
+func grant_power(kind: String) -> void:
+	match kind:
+		"speed": speed_boost_t = 6.0
+		"invincible": invincible_t = 6.0
+		"magnet": magnet_t = 8.0
 
 func grow(victim_size: float) -> void:
 	size_tier += victim_size * ABSORB
@@ -116,6 +152,7 @@ func grow(victim_size: float) -> void:
 		GameState.player_size = size_tier
 		GameState.add_score(int(round(victim_size * 10.0)))
 		_flash()
+		_spawn_burst(global_position + Vector3(0, radius(), 0), Color(0.5, 1.0, 0.7), 18)
 
 func on_eaten(eater: Bot) -> void:
 	if not alive:
@@ -248,11 +285,23 @@ func _avoid_obstacles(dir: Vector3) -> Vector3:
 func _process(delta: float) -> void:
 	if not alive:
 		return
+	if is_player_controlled:
+		_tick_powers(delta)
 	move(delta)
 	_update_sound()
 
+func _tick_powers(delta: float) -> void:
+	speed_boost_t = maxf(speed_boost_t - delta, 0.0)
+	invincible_t = maxf(invincible_t - delta, 0.0)
+	magnet_t = maxf(magnet_t - delta, 0.0)
+	if _shield:
+		_shield.visible = invincible_t > 0.0
+		if _shield.visible:
+			_shield.rotate_y(delta * 2.0)
+
 func move(delta: float) -> void:
-	var spd := base_speed * speed_mult
+	var boost := 1.7 if speed_boost_t > 0.0 else 1.0
+	var spd := base_speed * speed_mult * boost
 	var target_vel := desired_dir * spd
 	velocity = velocity.lerp(target_vel, 0.15)
 	global_position += velocity * delta
@@ -291,9 +340,72 @@ func _play_eat() -> void:
 	one.stream = SoundSynth.eat_sound(bot_type)
 	one.unit_size = 8.0
 	one.max_distance = 40.0
+	# Pitch eat sounds up for small victims, down for large ones.
+	one.pitch_scale = clampf(1.4 - size_tier * 0.08, 0.7, 1.5)
 	add_child(one)
 	one.play()
 	one.finished.connect(one.queue_free)
+
+# One-shot particle burst in world space (survives the eaten bot being freed).
+func _spawn_burst(pos: Vector3, color: Color, count: int) -> void:
+	var host := get_parent()
+	if host == null:
+		return
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.emitting = true
+	p.amount = count
+	p.lifetime = 0.6
+	p.explosiveness = 1.0
+	p.spread = 80.0
+	p.gravity = Vector3(0, -6, 0)
+	p.initial_velocity_min = 3.0
+	p.initial_velocity_max = 8.0
+	p.scale_amount_min = 0.15
+	p.scale_amount_max = 0.35
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.12
+	mesh.height = 0.24
+	mesh.radial_segments = 6
+	mesh.rings = 3
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 2.5
+	mesh.material = mat
+	p.mesh = mesh
+	host.add_child(p)
+	p.global_position = pos
+	get_tree().create_timer(1.2).timeout.connect(p.queue_free)
+
+# A continuous world-space motion trail, attached at a local offset.
+func _add_trail(color: Color, offset: Vector3) -> void:
+	var p := CPUParticles3D.new()
+	p.local_coords = false
+	p.emitting = true
+	p.amount = 18
+	p.lifetime = 0.5
+	p.position = offset
+	p.spread = 12.0
+	p.gravity = Vector3.ZERO
+	p.initial_velocity_min = 0.0
+	p.initial_velocity_max = 0.6
+	p.scale_amount_min = 0.18
+	p.scale_amount_max = 0.32
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.12
+	mesh.height = 0.24
+	mesh.radial_segments = 6
+	mesh.rings = 3
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 2.0
+	mesh.material = mat
+	p.mesh = mesh
+	add_child(p)
 
 func _flash() -> void:
 	# Brief glow on the player body when it grows.

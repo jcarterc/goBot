@@ -40,6 +40,8 @@ func _setup_environment() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(40), 0)
 	sun.light_energy = 1.1
+	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 120.0
 	add_child(sun)
 
 	var env := Environment.new()
@@ -57,6 +59,11 @@ func _setup_environment() -> void:
 	env.fog_enabled = true
 	env.fog_density = 0.004
 	env.fog_light_color = Color(0.75, 0.85, 0.95)
+	# Bloom so emissive bot accents, trails and power-ups glow.
+	env.glow_enabled = true
+	env.glow_intensity = 0.8
+	env.glow_bloom = 0.15
+	env.glow_hdr_threshold = 1.0
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)

@@ -12,9 +12,13 @@ var camera: Camera3D
 var touch: TouchControls
 var third_person := true
 var pitch := -0.25
+var _trauma := 0.0
 
 func setup(p_player: Bot) -> void:
 	player = p_player
+
+func add_trauma(amount: float) -> void:
+	_trauma = minf(_trauma + amount, 1.0)
 
 func toggle_view() -> void:
 	third_person = not third_person
@@ -60,7 +64,16 @@ func _process(delta: float) -> void:
 			rotate_y(-d.x * MOUSE_SENS)
 			pitch = clampf(pitch - d.y * MOUSE_SENS, -1.3, 0.9)
 	_apply_view()
+	_apply_shake(delta)
 	_drive_player()
+
+func _apply_shake(delta: float) -> void:
+	if _trauma <= 0.0:
+		return
+	_trauma = maxf(_trauma - delta * 1.6, 0.0)
+	var s := _trauma * _trauma
+	camera.rotation += Vector3(
+		randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 0.06 * s
 
 func _apply_view() -> void:
 	if camera == null:

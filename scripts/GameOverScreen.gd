@@ -1,56 +1,104 @@
 class_name GameOverScreen
 extends CanvasLayer
-# Overlay shown on death. Play Again restarts with the same bot + density;
-# Change Bot returns to the lobby.
+# Death overlay. On a qualifying score the player enters 3 initials for the
+# persistent leaderboard, then the leaderboard and Play Again / Change Bot show.
 
 signal play_again
 signal change_bot
 
 var killer_type := "bot"
+var _content: VBoxContainer
+var _initials: LineEdit
 
 func configure(p_killer: String) -> void:
 	killer_type = p_killer
 
 func _ready() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0.0, 0.0, 0.0, 0.6)
+	bg.color = Color(0.0, 0.0, 0.0, 0.62)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 14)
-	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.position = Vector2(-180, -150)
-	box.custom_minimum_size = Vector2(360, 0)
-	add_child(box)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UITheme.panel_style())
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.position = Vector2(-220, -220)
+	panel.custom_minimum_size = Vector2(440, 0)
+	add_child(panel)
 
-	box.add_child(_label("GAME OVER", 44, Color(1, 0.4, 0.4)))
-	box.add_child(_label("You were eaten by a %s" % killer_type, 18, Color.WHITE))
-	box.add_child(_label("SCORE      %s" % _commas(GameState.score), 22, Color.WHITE))
-	box.add_child(_label("YOUR BEST  %s" % _commas(GameState.best), 18, Color(0.8, 0.85, 0.95)))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	panel.add_child(box)
+
+	box.add_child(UITheme.title("GAME OVER", 44, Color(1, 0.45, 0.45)))
+	box.add_child(UITheme.heading("eaten by a %s" % killer_type, 16, UITheme.TEXT))
+	box.add_child(UITheme.heading("SCORE   %s" % _commas(GameState.score), 22, UITheme.TEXT))
+
+	_content = VBoxContainer.new()
+	_content.add_theme_constant_override("separation", 8)
+	box.add_child(_content)
+
+	if GameState.leaderboard_qualifies(GameState.score):
+		_show_initials_entry()
+	else:
+		_show_leaderboard_and_actions()
+
+func _show_initials_entry() -> void:
+	_clear(_content)
+	_content.add_child(UITheme.heading("NEW HIGH SCORE!  Enter your initials:", 15, UITheme.ACCENT_WARM))
+	_initials = LineEdit.new()
+	_initials.max_length = 3
+	_initials.text = "AAA"
+	_initials.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_initials.custom_minimum_size = Vector2(120, 44)
+	_initials.add_theme_font_size_override("font_size", 24)
+	_initials.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_initials.text_changed.connect(_upcase)
+	_initials.text_submitted.connect(func(_t): _submit())
+	_content.add_child(_initials)
+	var submit := UITheme.make_button("Submit", UITheme.ACCENT_WARM, Vector2(140, 44))
+	submit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	submit.pressed.connect(_submit)
+	_content.add_child(submit)
+	_initials.grab_focus()
+	_initials.select_all()
+
+func _upcase(t: String) -> void:
+	var up := t.to_upper()
+	if up != t:
+		_initials.text = up
+		_initials.caret_column = up.length()
+
+func _submit() -> void:
+	GameState.add_leaderboard_entry(_initials.text, GameState.score)
+	_show_leaderboard_and_actions()
+
+func _show_leaderboard_and_actions() -> void:
+	_clear(_content)
+	_content.add_child(UITheme.heading("LEADERBOARD", 14, UITheme.ACCENT_WARM))
+	if GameState.leaderboard.is_empty():
+		_content.add_child(UITheme.heading("no records yet", 13, Color(0.7, 0.75, 0.85)))
+	else:
+		var n: int = mini(8, GameState.leaderboard.size())
+		for i in n:
+			var e: Dictionary = GameState.leaderboard[i]
+			var color := UITheme.ACCENT_WARM if int(e["score"]) == GameState.score else UITheme.TEXT
+			_content.add_child(UITheme.heading("%d.   %s    %s" % [i + 1, e["name"], _commas(int(e["score"]))], 14, color))
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(row)
-	var again := Button.new()
-	again.text = "Play Again"
-	again.custom_minimum_size = Vector2(150, 50)
+	_content.add_child(row)
+	var again := UITheme.make_button("Play Again", UITheme.ACCENT, Vector2(150, 50))
 	again.pressed.connect(func(): play_again.emit())
 	row.add_child(again)
-	var change := Button.new()
-	change.text = "Change Bot"
-	change.custom_minimum_size = Vector2(150, 50)
+	var change := UITheme.make_button("Change Bot", UITheme.ACCENT, Vector2(150, 50))
 	change.pressed.connect(func(): change_bot.emit())
 	row.add_child(change)
 
-func _label(text: String, size: int, color: Color) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	return l
+func _clear(node: Node) -> void:
+	for c in node.get_children():
+		c.queue_free()
 
 func _commas(n: int) -> String:
 	var s := str(n)

@@ -4,11 +4,13 @@ extends Node3D
 # audio/AI culling, respawns to hold target_population, and player eat/death.
 
 signal player_died(killer_type: String)
+signal player_dominated
 
 const THINK_BATCH := 10        # AI state evaluations per frame
 const CULL_RADIUS := 80.0      # beyond this, bots only wander (no chase/flee)
 const AUDIO_RADIUS := 38.0     # beyond this, movement loops are silenced
 const RESPAWN_DELAY := 3.0
+const APEX_SIZE := 18.0        # reaching this triggers the Domination screen
 
 # Bot type mix and size-tier distribution from the design brief.
 const TYPE_WEIGHTS := [["walker", 0.5], ["roller", 0.3], ["flyer", 0.2]]
@@ -22,6 +24,7 @@ const SIZE_TIERS := [
 
 var world: World
 var player: Bot
+var camera: CameraController
 var target_population := 70
 
 var bots: Array[Bot] = []
@@ -86,6 +89,18 @@ func _weighted_type() -> String:
 	return "roller"
 
 func _weighted_size() -> float:
+	var ps: float = player.size_tier if player != null else 1.0
+	# A fraction spawn as apex predators sized to threaten the current player,
+	# so the world keeps pace as you grow — there is no "too big to die" stall.
+	if ps > 1.2 and randf() < 0.12:
+		return randf_range(ps * 1.2, ps * 1.9)
+	# Otherwise draw an absolute tier, lifted gently as the player grows so the
+	# whole world scales up over a run.
+	var base := _absolute_size()
+	var world_scale := clampf(1.0 + (ps - 1.0) * 0.2, 1.0, 5.0)
+	return base * world_scale
+
+func _absolute_size() -> float:
 	var r := randf()
 	var acc := 0.0
 	for tier in SIZE_TIERS:
@@ -136,6 +151,7 @@ func is_culled(bot: Bot) -> bool:
 	return bot.global_position.distance_to(player.global_position) > CULL_RADIUS
 
 # Player eats overlapping smaller bots; dies to an overlapping larger one.
+# Invincibility makes the player immune and able to eat anything it touches.
 func _resolve_player(_delta: float) -> void:
 	if player == null or not player.alive:
 		return
@@ -144,15 +160,35 @@ func _resolve_player(_delta: float) -> void:
 			continue
 		if not player.overlaps(bot):
 			continue
-		if player.can_eat(bot):
-			player.attempt_eat(bot)
+		var vsize: float = bot.size_tier
+		var at: Vector3 = bot.global_position
+		var ate := false
+		if player.is_invincible():
+			ate = player.attempt_eat(bot, true)
+		elif player.can_eat(bot):
+			ate = player.attempt_eat(bot)
 		elif bot.can_eat(player):
 			_kill_player(bot.bot_type)
 			return
+		if ate:
+			FloatingText.spawn(self, at + Vector3(0, 1.0, 0),
+				"+%d" % int(round(vsize * 10.0)), Color(1.0, 0.9, 0.4))
+			if camera != null and vsize >= 2.0:
+				camera.add_trauma(clampf(vsize * 0.08, 0.1, 0.5))
+	_check_domination()
+
+func _check_domination() -> void:
+	if GameState.dominated or player == null:
+		return
+	if player.size_tier >= APEX_SIZE:
+		GameState.dominated = true
+		player_dominated.emit()
 
 func _kill_player(killer_type: String) -> void:
 	_alive = false
 	player.alive = false
+	if camera != null:
+		camera.add_trauma(0.8)
 	var death := AudioStreamPlayer3D.new()
 	death.stream = SoundSynth.death_sound()
 	death.max_distance = 60.0
