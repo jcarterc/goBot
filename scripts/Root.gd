@@ -6,6 +6,7 @@ var _lobby: Lobby
 var _arena: Arena
 var _gameover: GameOverScreen
 var _victory: VictoryScreen
+var _evolution: EvolutionScreen
 
 func _ready() -> void:
 	_show_title()
@@ -34,6 +35,7 @@ func _start_game() -> void:
 	_arena.configure(GameState.player_bot_type, GameState.target_population)
 	_arena.game_over.connect(_on_game_over)
 	_arena.dominated.connect(_on_dominated)
+	_arena.evolve.connect(_on_evolve)
 	add_child(_arena)
 
 func _on_game_over(killer_type: String) -> void:
@@ -59,6 +61,28 @@ func _on_dominated() -> void:
 	_victory.new_game.connect(_show_lobby)
 	add_child(_victory)
 
+func _on_evolve(perks: Array) -> void:
+	# Don't interrupt a pending game-over / victory / evolution overlay.
+	if _gameover != null or _victory != null or _evolution != null:
+		return
+	if _arena:
+		_arena.process_mode = Node.PROCESS_MODE_DISABLED
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_evolution = EvolutionScreen.new()
+	_evolution.configure(perks)
+	_evolution.perk_chosen.connect(_on_perk_chosen)
+	add_child(_evolution)
+
+func _on_perk_chosen(perk_id: String) -> void:
+	if _arena and _arena.player and is_instance_valid(_arena.player):
+		_arena.player.apply_perk(perk_id)
+	if _evolution != null and is_instance_valid(_evolution):
+		_evolution.queue_free()
+	_evolution = null
+	if _arena:
+		_arena.process_mode = Node.PROCESS_MODE_INHERIT
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
 func _resume_from_victory() -> void:
 	if _victory != null and is_instance_valid(_victory):
 		_victory.queue_free()
@@ -69,7 +93,7 @@ func _resume_from_victory() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _clear_all() -> void:
-	for n in [_title, _lobby, _arena, _gameover, _victory]:
+	for n in [_title, _lobby, _arena, _gameover, _victory, _evolution]:
 		if n != null and is_instance_valid(n):
 			n.queue_free()
 	_title = null
@@ -77,3 +101,4 @@ func _clear_all() -> void:
 	_arena = null
 	_gameover = null
 	_victory = null
+	_evolution = null

@@ -5,6 +5,7 @@ extends Node3D
 
 signal game_over(killer_type: String)
 signal dominated
+signal evolve(perks: Array)
 
 var bot_type := "roller"
 var target_population := 70
@@ -33,6 +34,7 @@ func _ready() -> void:
 	spawner.spawn_initial()
 	spawner.player_died.connect(_on_player_died)
 	spawner.player_dominated.connect(func(): dominated.emit())
+	spawner.player_evolve.connect(func(perks): evolve.emit(perks))
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _build_powerups() -> void:
@@ -99,6 +101,7 @@ func _build_camera_and_hud() -> void:
 	camera.touch = touch
 	touch.view_toggled.connect(camera.toggle_view)
 	touch.dash_pressed.connect(player.try_dash)
+	touch.ability_pressed.connect(player.use_ability)
 
 	hud = ArenaHUD.new()
 	hud.setup(player, spawner, camera, powerups)

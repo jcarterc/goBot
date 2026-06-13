@@ -5,6 +5,7 @@ extends Node3D
 
 signal player_died(killer_type: String)
 signal player_dominated
+signal player_evolve(perks: Array)
 
 const THINK_BATCH := 10        # AI state evaluations per frame
 const CULL_RADIUS := 80.0      # beyond this, bots only wander (no chase/flee)
@@ -18,6 +19,7 @@ const BOSS_INTERVAL := 55.0   # seconds between boss appearances
 var _combo_timer := 0.0
 var _boss: Bot = null
 var _boss_timer := BOSS_INTERVAL
+var _evolve_idx := 0
 
 # Bot type mix and size-tier distribution from the design brief.
 const TYPE_WEIGHTS := [["walker", 0.5], ["roller", 0.3], ["flyer", 0.2]]
@@ -128,6 +130,15 @@ func _process(delta: float) -> void:
 	_tick_respawns(delta)
 	_tick_combo(delta)
 	_tick_boss(delta)
+	_check_evolution()
+
+# Offer a perk choice when the player crosses the next size milestone.
+func _check_evolution() -> void:
+	if player == null or _evolve_idx >= Perks.MILESTONES.size():
+		return
+	if player.size_tier >= Perks.MILESTONES[_evolve_idx]:
+		_evolve_idx += 1
+		player_evolve.emit(Perks.pick(3))
 
 func current_boss() -> Bot:
 	if _boss != null and is_instance_valid(_boss) and _boss.alive:
@@ -306,6 +317,17 @@ func _check_domination() -> void:
 
 func _kill_player(killer: Bot) -> void:
 	if not _alive:
+		return
+	# Iron Hide perk: survive one fatal hit.
+	if player.revives > 0:
+		player.revives -= 1
+		player.invincible_t = maxf(player.invincible_t, 3.0)
+		player.size_tier = maxf(0.8, player.size_tier * 0.7)
+		player.apply_size()
+		GameState.player_size = player.size_tier
+		FloatingText.spawn(self, player.global_position + Vector3(0, 2, 0), "REVIVED!", Color(0.5, 1.0, 0.7))
+		if camera != null:
+			camera.add_trauma(0.5)
 		return
 	_alive = false
 	player.alive = false

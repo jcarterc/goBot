@@ -15,6 +15,7 @@ var powerups: PowerUpManager
 var _size_label: Label
 var _score_label: Label
 var _power_label: Label
+var _perk_label: Label
 var _combo_label: Label
 var _crosshair: Label
 var _danger: ColorRect
@@ -34,6 +35,8 @@ func setup(p_player: Bot, p_spawner: BotSpawner, p_camera: CameraController, p_p
 func _ready() -> void:
 	_size_label = _label(Control.PRESET_TOP_LEFT, Vector2(16, 12), 18, HORIZONTAL_ALIGNMENT_LEFT)
 	_power_label = _label(Control.PRESET_TOP_LEFT, Vector2(16, 40), 16, HORIZONTAL_ALIGNMENT_LEFT)
+	_perk_label = _label(Control.PRESET_TOP_LEFT, Vector2(16, 64), 13, HORIZONTAL_ALIGNMENT_LEFT)
+	_perk_label.add_theme_color_override("font_color", Color(0.7, 0.95, 0.75))
 	_score_label = _label(Control.PRESET_TOP_RIGHT, Vector2(-16, 12), 18, HORIZONTAL_ALIGNMENT_RIGHT)
 	_score_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	_score_label.position = Vector2(-260, 12)
@@ -154,6 +157,7 @@ func _process(_delta: float) -> void:
 	_size_label.text = "%s   size %.2f" % [_tier_name(player.size_tier), player.size_tier]
 	_score_label.text = "SCORE %s\nBEST  %s" % [_commas(GameState.score), _commas(GameState.best)]
 	_power_label.text = _power_text()
+	_perk_label.text = ("perks: " + ", ".join(player.perks)) if not player.perks.is_empty() else ""
 	if camera != null:
 		_crosshair.visible = not camera.third_person
 	_danger.color.a = lerpf(_danger.color.a, 0.55 if _danger_near() else 0.0, 0.1)
@@ -186,7 +190,8 @@ func _power_text() -> String:
 		parts.append("INVINCIBLE %ds" % ceili(player.invincible_t))
 	if player.magnet_t > 0.0:
 		parts.append("MAGNET %ds" % ceili(player.magnet_t))
-	parts.append("DASH READY" if player.dash_cd <= 0.0 else "DASH %.0fs" % ceil(player.dash_cd))
+	parts.append("DASH" if player.dash_cd <= 0.0 else "DASH %.0fs" % ceil(player.dash_cd))
+	parts.append("POWER" if player.ability_cd <= 0.0 else "POWER %.0fs" % ceil(player.ability_cd))
 	return "   ".join(parts)
 
 func _danger_near() -> bool:

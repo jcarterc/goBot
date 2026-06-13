@@ -7,6 +7,7 @@ extends CanvasLayer
 
 signal view_toggled
 signal dash_pressed
+signal ability_pressed
 
 const JOY_RADIUS := 90.0
 
@@ -26,6 +27,7 @@ var _joy_base: Panel
 var _joy_knob: Panel
 var _view_btn: Panel
 var _dash_btn: Panel
+var _ability_btn: Panel
 var _up_btn: Panel
 var _down_btn: Panel
 
@@ -46,6 +48,8 @@ func _ready() -> void:
 	add_child(_view_btn)
 	_dash_btn = _button("DASH")
 	add_child(_dash_btn)
+	_ability_btn = _button("POWER")
+	add_child(_ability_btn)
 	if bot_type == "flyer":
 		_up_btn = _button("▲")
 		add_child(_up_btn)
@@ -85,6 +89,7 @@ func _layout_buttons() -> void:
 	var s := get_viewport().get_visible_rect().size
 	_view_btn.position = Vector2(s.x - 116, s.y - 90)
 	_dash_btn.position = Vector2(s.x - 224, s.y - 90)
+	_ability_btn.position = Vector2(s.x - 224, s.y - 170)
 	if _up_btn:
 		_up_btn.position = Vector2(s.x - 116, s.y - 250)
 		_down_btn.position = Vector2(s.x - 116, s.y - 170)
@@ -105,6 +110,9 @@ func _on_press(index: int, pos: Vector2) -> void:
 		return
 	if _hit(_dash_btn, pos):
 		dash_pressed.emit()
+		return
+	if _hit(_ability_btn, pos):
+		ability_pressed.emit()
 		return
 	if _up_btn and _hit(_up_btn, pos):
 		_btn_finger = index

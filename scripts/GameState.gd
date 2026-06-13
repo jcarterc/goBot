@@ -37,6 +37,7 @@ var best := 0
 var bot_count := 0
 var touch_enabled := false
 var dominated := false
+var metabolism := true
 
 # Combo (runtime).
 var combo := 0
