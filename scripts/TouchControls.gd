@@ -6,6 +6,7 @@ extends CanvasLayer
 # devices; can be toggled from the lobby or with the T key.
 
 signal view_toggled
+signal dash_pressed
 
 const JOY_RADIUS := 90.0
 
@@ -24,6 +25,7 @@ var _move_origin := Vector2.ZERO
 var _joy_base: Panel
 var _joy_knob: Panel
 var _view_btn: Panel
+var _dash_btn: Panel
 var _up_btn: Panel
 var _down_btn: Panel
 
@@ -42,6 +44,8 @@ func _ready() -> void:
 
 	_view_btn = _button("VIEW")
 	add_child(_view_btn)
+	_dash_btn = _button("DASH")
+	add_child(_dash_btn)
 	if bot_type == "flyer":
 		_up_btn = _button("▲")
 		add_child(_up_btn)
@@ -80,6 +84,7 @@ func _button(text: String) -> Panel:
 func _layout_buttons() -> void:
 	var s := get_viewport().get_visible_rect().size
 	_view_btn.position = Vector2(s.x - 116, s.y - 90)
+	_dash_btn.position = Vector2(s.x - 224, s.y - 90)
 	if _up_btn:
 		_up_btn.position = Vector2(s.x - 116, s.y - 250)
 		_down_btn.position = Vector2(s.x - 116, s.y - 170)
@@ -97,6 +102,9 @@ func _input(event: InputEvent) -> void:
 func _on_press(index: int, pos: Vector2) -> void:
 	if _hit(_view_btn, pos):
 		view_toggled.emit()
+		return
+	if _hit(_dash_btn, pos):
+		dash_pressed.emit()
 		return
 	if _up_btn and _hit(_up_btn, pos):
 		_btn_finger = index

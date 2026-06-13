@@ -11,6 +11,13 @@ const CULL_RADIUS := 80.0      # beyond this, bots only wander (no chase/flee)
 const AUDIO_RADIUS := 38.0     # beyond this, movement loops are silenced
 const RESPAWN_DELAY := 3.0
 const APEX_SIZE := 18.0        # reaching this triggers the Domination screen
+const COMBO_WINDOW := 3.0      # seconds between eats to keep a combo alive
+const PERSONALITIES := ["normal", "aggressive", "cowardly", "ambusher"]
+const BOSS_INTERVAL := 55.0   # seconds between boss appearances
+
+var _combo_timer := 0.0
+var _boss: Bot = null
+var _boss_timer := BOSS_INTERVAL
 
 # Bot type mix and size-tier distribution from the design brief.
 const TYPE_WEIGHTS := [["walker", 0.5], ["roller", 0.3], ["flyer", 0.2]]
@@ -47,6 +54,7 @@ func _spawn_one(force_type := "") -> void:
 	var btype := force_type if force_type != "" else _weighted_type()
 	var size := _weighted_size()
 	var bot := _make_bot(btype)
+	bot.personality = PERSONALITIES[randi() % PERSONALITIES.size()]
 	bot.setup(btype, size, world, self)
 	add_child(bot)
 	# Place on the spawn ring, away from the player.
@@ -118,6 +126,84 @@ func _process(delta: float) -> void:
 	_tick_audio()
 	_resolve_player(delta)
 	_tick_respawns(delta)
+	_tick_combo(delta)
+	_tick_boss(delta)
+
+func current_boss() -> Bot:
+	if _boss != null and is_instance_valid(_boss) and _boss.alive:
+		return _boss
+	return null
+
+func _tick_boss(delta: float) -> void:
+	if current_boss() != null:
+		return
+	_boss = null
+	if player == null or player.size_tier < 2.5:
+		return
+	_boss_timer -= delta
+	if _boss_timer <= 0.0:
+		_boss_timer = BOSS_INTERVAL
+		_spawn_boss()
+
+func _spawn_boss() -> void:
+	var boss := WalkerBot.new()
+	boss.personality = "aggressive"
+	var size := maxf(6.0, player.size_tier * 2.2)
+	boss.setup("walker", size, world, self)
+	add_child(boss)
+	boss.make_boss(4 + int(player.size_tier / 3.0))
+	boss.global_position = _edge_spawn_position("walker")
+	boss.eaten.connect(_on_bot_eaten)
+	bots.append(boss)
+	_boss = boss
+	FloatingText.spawn(self, player.global_position + Vector3(0, 6, 0), "A BOSS APPROACHES", Color(1.0, 0.3, 0.4))
+
+func _defeat_boss(boss: Bot) -> void:
+	var at := boss.global_position
+	GameState.add_score(500 + int(boss.size_tier * 20.0))
+	FloatingText.spawn(self, at + Vector3(0, 3, 0), "BOSS DOWN!", Color(1.0, 0.85, 0.3))
+	if camera != null:
+		camera.add_trauma(0.7)
+	player.grow(boss.size_tier * 1.2)
+	_boss = null
+	boss.on_eaten(player)
+
+# Move a stuck/frozen player bot back to a safe spot without ending the run.
+func respawn_player() -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	Engine.time_scale = 1.0
+	var gy := world.ground_y(0, 0)
+	var p := Vector3(0.5, gy, 0.5)
+	if player.bot_type == "flyer":
+		p.y += 12.0
+	player.global_position = p
+	player.velocity = Vector3.ZERO
+	player.desired_dir = Vector3.ZERO
+	player.alive = true
+	_alive = true
+
+func _tick_combo(delta: float) -> void:
+	if _combo_timer <= 0.0:
+		return
+	_combo_timer -= delta
+	if _combo_timer <= 0.0:
+		GameState.combo = 0
+		GameState.combo_mult = 1.0
+
+# 0..1 how close the nearest bot that can eat the player is.
+func threat_level() -> float:
+	if player == null or not player.alive:
+		return 0.0
+	var nearest := INF
+	for b in bots:
+		if b == player or not is_instance_valid(b) or not b.alive:
+			continue
+		if b.can_eat(player):
+			nearest = minf(nearest, player.global_position.distance_to(b.global_position))
+	if nearest == INF:
+		return 0.0
+	return clampf(1.0 - nearest / 45.0, 0.0, 1.0)
 
 func _tick_ai() -> void:
 	if bots.is_empty():
@@ -160,6 +246,11 @@ func _resolve_player(_delta: float) -> void:
 			continue
 		if not player.overlaps(bot):
 			continue
+		if bot.is_boss:
+			_resolve_boss(bot)
+			if not player.alive:
+				return
+			continue
 		var vsize: float = bot.size_tier
 		var at: Vector3 = bot.global_position
 		var ate := false
@@ -168,14 +259,43 @@ func _resolve_player(_delta: float) -> void:
 		elif player.can_eat(bot):
 			ate = player.attempt_eat(bot)
 		elif bot.can_eat(player):
-			_kill_player(bot.bot_type)
+			_kill_player(bot)
 			return
 		if ate:
-			FloatingText.spawn(self, at + Vector3(0, 1.0, 0),
-				"+%d" % int(round(vsize * 10.0)), Color(1.0, 0.9, 0.4))
+			_award_eat(vsize, at)
 			if camera != null and vsize >= 2.0:
 				camera.add_trauma(clampf(vsize * 0.08, 0.1, 0.5))
 	_check_domination()
+
+func _award_eat(vsize: float, at: Vector3) -> void:
+	GameState.bots_eaten_run += 1
+	_combo_timer = COMBO_WINDOW
+	GameState.combo += 1
+	GameState.combo_mult = clampf(1.0 + (GameState.combo - 1) * 0.2, 1.0, 5.0)
+	var pts := int(round(vsize * 10.0 * GameState.combo_mult))
+	GameState.add_score(pts)
+	var txt := "+%d" % pts
+	var color := Color(1.0, 0.9, 0.4)
+	if GameState.combo > 1:
+		txt += "   x%d" % GameState.combo
+		color = Color(1.0, 0.6, 0.2)
+	FloatingText.spawn(self, at + Vector3(0, 1.0, 0), txt, color)
+
+# Ramming a boss while attacking (dash / speed / invincible) damages it;
+# otherwise it eats the player unless they're invincible.
+func _resolve_boss(boss: Bot) -> void:
+	if player.is_attacking() and boss._hit_cd <= 0.0:
+		boss.hp -= 1
+		boss._hit_cd = 0.6
+		var away := (boss.global_position - player.global_position).normalized()
+		boss.global_position += away * 2.0
+		FloatingText.spawn(self, boss.global_position + Vector3(0, boss.radius(), 0), "HIT!", Color(1.0, 0.6, 0.3))
+		if camera != null:
+			camera.add_trauma(0.3)
+		if boss.hp <= 0:
+			_defeat_boss(boss)
+	elif not player.is_invincible():
+		_kill_player(boss)
 
 func _check_domination() -> void:
 	if GameState.dominated or player == null:
@@ -184,18 +304,28 @@ func _check_domination() -> void:
 		GameState.dominated = true
 		player_dominated.emit()
 
-func _kill_player(killer_type: String) -> void:
+func _kill_player(killer: Bot) -> void:
+	if not _alive:
+		return
 	_alive = false
 	player.alive = false
+	var killer_type := killer.bot_type
 	if camera != null:
 		camera.add_trauma(0.8)
+		camera.death_focus(killer)
 	var death := AudioStreamPlayer3D.new()
 	death.stream = SoundSynth.death_sound()
 	death.max_distance = 60.0
 	player.add_child(death)
 	death.play()
 	GameState.set_state("game_over")
-	player_died.emit(killer_type)
+	GameState.finish_run()
+	# Brief slow-motion death cam before the overlay.
+	Engine.time_scale = 0.35
+	var t := get_tree().create_timer(1.1, true, false, true)
+	t.timeout.connect(func():
+		Engine.time_scale = 1.0
+		player_died.emit(killer_type))
 
 func _on_bot_eaten(victim: Bot, _eater: Bot) -> void:
 	# Player death is handled separately; only schedule AI bot respawns here.

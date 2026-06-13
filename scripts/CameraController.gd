@@ -13,12 +13,16 @@ var touch: TouchControls
 var third_person := true
 var pitch := -0.25
 var _trauma := 0.0
+var _death_focus: Bot
 
 func setup(p_player: Bot) -> void:
 	player = p_player
 
 func add_trauma(amount: float) -> void:
 	_trauma = minf(_trauma + amount, 1.0)
+
+func death_focus(target: Bot) -> void:
+	_death_focus = target
 
 func toggle_view() -> void:
 	third_person = not third_person
@@ -34,15 +38,22 @@ func _ready() -> void:
 	_apply_view()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
+	# On touch devices the on-screen controls own look/move; ignore mouse here
+	# so emulated/stray pointer events can't double-rotate the camera.
+	var touch_mode := GameState.touch_enabled
+	if not touch_mode and event is InputEventMouseButton and event.pressed:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		elif event.button_index == MOUSE_BUTTON_RIGHT and player != null:
+			player.try_dash()
+	elif not touch_mode and event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotate_y(-event.relative.x * MOUSE_SENS)
 		pitch = clampf(pitch - event.relative.y * MOUSE_SENS, -1.3, 0.9)
 		_apply_view()
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_F1 or event.keycode == KEY_V:
+		if event.keycode == KEY_CTRL and player != null:
+			player.try_dash()
+		elif event.keycode == KEY_F1 or event.keycode == KEY_V:
 			toggle_view()
 		elif event.keycode == KEY_T:
 			GameState.touch_enabled = not GameState.touch_enabled
@@ -52,7 +63,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _process(delta: float) -> void:
-	if player == null or not is_instance_valid(player) or not player.alive:
+	if player == null or not is_instance_valid(player):
+		return
+	# Death cam: frame the killer during the slow-mo beat.
+	if _death_focus != null and is_instance_valid(_death_focus):
+		var mid := (player.global_position + _death_focus.global_position) * 0.5
+		global_position = global_position.lerp(mid, 0.1)
+		_apply_view()
+		var look := _death_focus.global_position
+		if camera.global_position.distance_to(look) > 0.6:
+			camera.look_at(look, Vector3.UP)
+		_apply_shake(delta)
+		return
+	if not player.alive:
 		return
 	# Follow the player; third person lags slightly for feel.
 	var follow := FOLLOW_LAG if third_person else 1.0
@@ -65,7 +88,18 @@ func _process(delta: float) -> void:
 			pitch = clampf(pitch - d.y * MOUSE_SENS, -1.3, 0.9)
 	_apply_view()
 	_apply_shake(delta)
+	_clamp_camera()
 	_drive_player()
+
+# Keep the camera from dipping below the terrain (which made the ground look
+# see-through from underneath).
+func _clamp_camera() -> void:
+	if camera == null or player == null or player.world == null:
+		return
+	var cg := camera.global_position
+	var floor_y := player.world.ground_y(floori(cg.x), floori(cg.z)) + 1.2
+	if cg.y < floor_y:
+		camera.global_position.y = floor_y
 
 func _apply_shake(delta: float) -> void:
 	if _trauma <= 0.0:
@@ -80,15 +114,17 @@ func _apply_view() -> void:
 		return
 	var size: float = player.size_tier if player else 1.0
 	if third_person:
-		var back := clampf(8.0 + size * 2.0, 8.0, 24.0)
-		var up := clampf(4.0 + size, 5.0, 13.0)
+		# Katamari-style: the camera pulls way out as the player grows.
+		var back := clampf(8.0 + size * 3.2, 8.0, 64.0)
+		var up := clampf(4.0 + size * 1.6, 5.0, 34.0)
 		camera.position = Vector3(0, up, back)
 		camera.rotation = Vector3(pitch, 0, 0)
+		camera.far = maxf(400.0, back * 8.0)
 	else:
 		camera.position = Vector3(0, clampf(1.2 * size, 1.0, 6.0), 0)
 		camera.rotation = Vector3(pitch, 0, 0)
-	# FOV widens slightly as the player grows for a sense of scale.
-	camera.fov = clampf(70.0 + size * 2.5, 70.0, 100.0)
+	# FOV widens as the player grows for a sense of scale.
+	camera.fov = clampf(68.0 + size * 2.2, 68.0, 102.0)
 
 func _drive_player() -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")

@@ -33,6 +33,28 @@ Floating pickups spawn around the world:
 | **Speed Boost** | Move much faster for a few seconds |
 | **Invincible** | Can't be eaten — and you can eat *anything* you touch |
 | **Magnet** | Pulls nearby smaller bots toward you |
+| **Shrink Ray** | Shrinks every nearby threat by 40% |
+| **Decoy** | Drops a glowing clone that lures threats away |
+
+Plus an always-available **Dash** (Ctrl / right-click / on-screen button) on a
+short cooldown — also the way to damage bosses.
+
+### More to discover
+- **Combos**: chain eats quickly for a rising score multiplier.
+- **Boss bots**: menacing apex predators with a health bar appear over time —
+  ram them while dashing or powered-up to take them down for a big reward.
+- **Radar minimap** (expandable with M) showing threats, prey, power-ups, bosses.
+- **Bot personalities** (aggressive / cowardly / ambusher) and a **cinematic
+  slow-mo death cam**.
+- **Daily Challenge** (today's seeded world + its own leaderboard),
+  **unlockable bot skins**, and **lifetime stats**.
+- **Save Image** on game over for a shareable result card.
+
+### World & atmosphere
+- Bigger arena with **mountains**, carved **streams**, forests, and beaches.
+- A generated **panoramic sky** (clouds, sun, distant mountains), real-time
+  shadows, bloom, a gentle **day/night** light cycle, and **dynamic tension
+  music** that swells when a big threat closes in.
 
 ### Leaderboard
 Beat a top-10 score and you enter three initials on death. Scores persist in
@@ -62,9 +84,12 @@ the browser (`localStorage`) and show on the lobby and game-over screens.
 |---|---|
 | Mouse | Look (bot steers where the camera faces) |
 | WASD | Move |
+| Ctrl / Right-click | Dash (short cooldown) |
 | Space / Shift | Flyer up / down |
 | F1 or V | Toggle first / third person |
+| M | Expand / shrink the radar |
 | T | Toggle on-screen touch controls |
+| Respawn button (top-right) | Recover a stuck bot |
 | Esc | Release mouse |
 
 ### Mobile / touch

@@ -195,6 +195,21 @@ static func music_loop() -> AudioStreamWAV:
 	_cache["music"] = _wav(out, true)
 	return _cache["music"]
 
+# Tension layer: a low pulsing drone that fades in when a big threat is near.
+static func tension_loop() -> AudioStreamWAV:
+	if _cache.has("tension"):
+		return _cache["tension"]
+	var n := RATE * 2
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var pulse := 0.6 + 0.4 * sin(TAU * 2.0 * float(i) / RATE)
+		var low := sin(TAU * 55.0 * float(i) / RATE) * 0.6
+		var low2 := sin(TAU * 82.5 * float(i) / RATE) * 0.3
+		out[i] = (low + low2) * pulse * 0.35
+	_cache["tension"] = _wav(out, true)
+	return _cache["tension"]
+
 static func death_sound() -> AudioStreamWAV:
 	if _cache.has("death"):
 		return _cache["death"]

@@ -7,7 +7,7 @@ extends Node3D
 signal eaten(victim: Bot, eater: Bot)
 
 const BODY_UNIT := 0.7          # world radius at size_tier 1.0
-const BASE_SPEED := 7.0
+const BASE_SPEED := 5.0         # tuned slower for a calmer overall pace
 const BASE_DETECT := 9.0
 const DETECT_PER_TIER := 3.5
 const EAT_RATIO := 1.15         # must be 15% larger to eat
@@ -32,10 +32,26 @@ var alive := true
 var speed_boost_t := 0.0
 var invincible_t := 0.0
 var magnet_t := 0.0
+var dash_t := 0.0
+var dash_cd := 0.0
 var _shield: CSGSphere3D
+
+const DASH_DUR := 0.28
+const DASH_COOLDOWN := 2.5
+const DASH_MULT := 3.2
+
+# Boss state.
+var is_boss := false
+var hp := 1
+var max_hp := 1
+var _hit_cd := 0.0
 
 # AI state machine
 var state := "wander"
+var personality := "normal"  # aggressive | cowardly | ambusher | normal
+var _detect_mult := 1.0
+var _chase_boost := 1.0
+var _flee_mult := 1.0
 var target: Bot = null
 var _wander_dir := Vector3.ZERO
 var _wander_timer := 0.0
@@ -52,12 +68,24 @@ func setup(p_type: String, p_size: float, p_world: World, p_spawner: BotSpawner)
 	sound_id = "%s_%d" % [bot_type, get_instance_id()]
 
 func _ready() -> void:
+	_apply_personality()
 	_build_body()
 	_setup_audio()
 	if is_player_controlled:
 		_build_shield()
 	apply_size(true)
 	_wander_dir = _random_horizontal()
+
+func _apply_personality() -> void:
+	match personality:
+		"aggressive":
+			_detect_mult = 1.3; _chase_boost = 1.15; _flee_mult = 0.8
+		"cowardly":
+			_detect_mult = 1.1; _chase_boost = 0.95; _flee_mult = 1.6
+		"ambusher":
+			_detect_mult = 0.7; _chase_boost = 1.5; _flee_mult = 1.0
+		_:
+			_detect_mult = 1.0; _chase_boost = 1.0; _flee_mult = 1.0
 
 func _build_shield() -> void:
 	_shield = CSGSphere3D.new()
@@ -93,7 +121,7 @@ func radius() -> float:
 
 func apply_size(instant := false) -> void:
 	base_speed = BASE_SPEED / sqrt(size_tier)
-	detection_radius = BASE_DETECT + DETECT_PER_TIER * size_tier
+	detection_radius = (BASE_DETECT + DETECT_PER_TIER * size_tier) * _detect_mult
 	if _audio:
 		_audio.max_distance = 14.0 * size_tier
 	var target_scale := Vector3.ONE * size_tier
@@ -139,18 +167,49 @@ func attempt_eat(other: Bot, force := false) -> bool:
 func is_invincible() -> bool:
 	return invincible_t > 0.0
 
+# True while the player is "attacking" — can damage a boss by ramming it.
+func is_attacking() -> bool:
+	return is_invincible() or dash_t > 0.0 or speed_boost_t > 0.0
+
+func try_dash() -> void:
+	if dash_cd > 0.0 or not is_player_controlled:
+		return
+	dash_t = DASH_DUR
+	dash_cd = DASH_COOLDOWN
+	_spawn_burst(global_position + Vector3(0, radius(), 0), Color(0.6, 0.9, 1.0), 14)
+
 func grant_power(kind: String) -> void:
 	match kind:
 		"speed": speed_boost_t = 6.0
 		"invincible": invincible_t = 6.0
 		"magnet": magnet_t = 8.0
 
+func make_boss(boss_hp: int) -> void:
+	is_boss = true
+	hp = boss_hp
+	max_hp = boss_hp
+	personality = "aggressive"
+	apply_skin_tint(Color(1.0, 0.4, 0.4))
+	# Menacing red aura.
+	var aura := CSGSphere3D.new()
+	aura.radius = BODY_UNIT * 1.7
+	aura.radial_segments = 16
+	aura.rings = 8
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(1.0, 0.2, 0.2, 0.18)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.emission_enabled = true
+	m.emission = Color(1.0, 0.2, 0.1)
+	m.emission_energy_multiplier = 2.0
+	aura.material = m
+	add_child(aura)
+
 func grow(victim_size: float) -> void:
 	size_tier += victim_size * ABSORB
 	apply_size()
 	if is_player_controlled:
 		GameState.player_size = size_tier
-		GameState.add_score(int(round(victim_size * 10.0)))
+		# Score (with combo) is awarded by the spawner, which owns combo timing.
 		_flash()
 		_spawn_burst(global_position + Vector3(0, radius(), 0), Color(0.5, 1.0, 0.7), 18)
 
@@ -209,7 +268,7 @@ func scan_nearby() -> Array:
 	var threat: Bot = null
 	var prey_d := INF
 	var threat_d := INF
-	var threat_range := detection_radius * 1.5
+	var threat_range := detection_radius * 1.5 * _flee_mult
 	if spawner == null:
 		return [null, null]
 	for b in spawner.bots:
@@ -232,6 +291,7 @@ func _steer(_dt: float) -> void:
 		"chase":
 			if target != null and target.alive:
 				desired_dir = _to(target)
+				speed_mult = _chase_boost
 		"flee":
 			if target != null and is_instance_valid(target):
 				desired_dir = -_to(target)
@@ -287,6 +347,8 @@ func _process(delta: float) -> void:
 		return
 	if is_player_controlled:
 		_tick_powers(delta)
+	elif is_boss:
+		_hit_cd = maxf(_hit_cd - delta, 0.0)
 	move(delta)
 	_update_sound()
 
@@ -294,6 +356,8 @@ func _tick_powers(delta: float) -> void:
 	speed_boost_t = maxf(speed_boost_t - delta, 0.0)
 	invincible_t = maxf(invincible_t - delta, 0.0)
 	magnet_t = maxf(magnet_t - delta, 0.0)
+	dash_t = maxf(dash_t - delta, 0.0)
+	dash_cd = maxf(dash_cd - delta, 0.0)
 	if _shield:
 		_shield.visible = invincible_t > 0.0
 		if _shield.visible:
@@ -301,6 +365,8 @@ func _tick_powers(delta: float) -> void:
 
 func move(delta: float) -> void:
 	var boost := 1.7 if speed_boost_t > 0.0 else 1.0
+	if dash_t > 0.0:
+		boost *= DASH_MULT
 	var spd := base_speed * speed_mult * boost
 	var target_vel := desired_dir * spd
 	velocity = velocity.lerp(target_vel, 0.15)
@@ -406,6 +472,19 @@ func _add_trail(color: Color, offset: Vector3) -> void:
 	mesh.material = mat
 	p.mesh = mesh
 	add_child(p)
+
+func apply_skin_tint(tint: Color) -> void:
+	if tint == Color.WHITE:
+		return
+	for child in get_children():
+		if child == _shield:
+			continue
+		var prim := child as CSGPrimitive3D
+		if prim == null:
+			continue
+		var m := prim.material as StandardMaterial3D
+		if m != null:
+			m.albedo_color = m.albedo_color * tint
 
 func _flash() -> void:
 	# Brief glow on the player body when it grows.
