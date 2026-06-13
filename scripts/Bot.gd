@@ -46,6 +46,25 @@ var hp := 1
 var max_hp := 1
 var _hit_cd := 0.0
 
+# Type-specific ability + stun/spin windows.
+const ABILITY_COOLDOWN := 8.0
+var ability_cd := 0.0
+var stun_t := 0.0   # AI bot stunned (by player abilities)
+var spin_t := 0.0   # Roller spin-dash: relaxed eat threshold while active
+
+# Evolution perk modifiers (player). Defaults = no perks.
+var eat_ratio := EAT_RATIO
+var absorb_perk := ABSORB
+var speed_perk_mult := 1.0
+var dash_cd_mult := 1.0
+var dash_dur_mult := 1.0
+var power_dur_mult := 1.0
+var metabolism_mult := 1.0
+var ability_cd_mult := 1.0
+var revives := 0
+var _no_decay_t := 0.0
+var perks: Array[String] = []
+
 # AI state machine
 var state := "wander"
 var personality := "normal"  # aggressive | cowardly | ambusher | normal
@@ -135,7 +154,11 @@ func apply_size(instant := false) -> void:
 # --- Eating ---
 
 func can_eat(other: Bot) -> bool:
-	return size_tier >= other.size_tier * EAT_RATIO
+	var ratio := eat_ratio
+	# Roller spin-dash lets the player briefly devour near-equal bots.
+	if is_player_controlled and spin_t > 0.0:
+		ratio = minf(ratio, 0.95)
+	return size_tier >= other.size_tier * ratio
 
 func overlaps(other: Bot) -> bool:
 	var a := global_position
@@ -174,15 +197,63 @@ func is_attacking() -> bool:
 func try_dash() -> void:
 	if dash_cd > 0.0 or not is_player_controlled:
 		return
-	dash_t = DASH_DUR
-	dash_cd = DASH_COOLDOWN
+	dash_t = DASH_DUR * dash_dur_mult
+	dash_cd = DASH_COOLDOWN * dash_cd_mult
 	_spawn_burst(global_position + Vector3(0, radius(), 0), Color(0.6, 0.9, 1.0), 14)
+
+# Type-specific active ability (player only).
+func use_ability() -> void:
+	if not is_player_controlled or ability_cd > 0.0:
+		return
+	ability_cd = ABILITY_COOLDOWN * ability_cd_mult
+	match bot_type:
+		"roller":
+			# Spin-dash: brief offensive window + speed burst.
+			spin_t = 2.0
+			speed_boost_t = maxf(speed_boost_t, 1.6)
+			_spawn_burst(global_position + Vector3(0, radius(), 0), Color(1.0, 0.7, 0.2), 24)
+		"flyer":
+			# Dive-bomb shockwave.
+			_shockwave(8.0 + size_tier, 1.6, 4.0, Color(0.4, 0.8, 1.0))
+		_:
+			# Walker ground-pound.
+			_shockwave(7.0 + size_tier, 1.8, 4.5, Color(0.7, 0.7, 0.8))
+
+# AoE that knocks back and stuns nearby AI bots.
+func _shockwave(radius_w: float, stun: float, knock: float, color: Color) -> void:
+	if spawner == null:
+		return
+	for b in spawner.bots:
+		if b == self or not is_instance_valid(b) or not b.alive or b.is_player_controlled:
+			continue
+		var to_b := b.global_position - global_position
+		to_b.y = 0.0
+		if to_b.length() < radius_w and not b.is_boss:
+			b.global_position += to_b.normalized() * knock
+			b.stun_t = maxf(b.stun_t, stun)
+	_spawn_burst(global_position + Vector3(0, radius() * 0.5, 0), color, 32)
+	if spawner.camera != null:
+		spawner.camera.add_trauma(0.5)
+
+func apply_perk(id: String) -> void:
+	perks.append(id)
+	match id:
+		"voracious": eat_ratio = maxf(1.0, eat_ratio - 0.06)
+		"sprinter": speed_perk_mult *= 1.15
+		"quick_dash":
+			dash_cd_mult *= 0.7
+			dash_dur_mult *= 1.2
+		"collector": power_dur_mult *= 1.5
+		"iron_hide": revives += 1
+		"efficient": metabolism_mult *= 0.5
+		"big_appetite": absorb_perk = minf(0.6, absorb_perk + 0.15)
+		"adrenaline": ability_cd_mult *= 0.7
 
 func grant_power(kind: String) -> void:
 	match kind:
-		"speed": speed_boost_t = 6.0
-		"invincible": invincible_t = 6.0
-		"magnet": magnet_t = 8.0
+		"speed": speed_boost_t = 6.0 * power_dur_mult
+		"invincible": invincible_t = 6.0 * power_dur_mult
+		"magnet": magnet_t = 8.0 * power_dur_mult
 
 func make_boss(boss_hp: int) -> void:
 	is_boss = true
@@ -205,7 +276,8 @@ func make_boss(boss_hp: int) -> void:
 	add_child(aura)
 
 func grow(victim_size: float) -> void:
-	size_tier += victim_size * ABSORB
+	size_tier += victim_size * absorb_perk
+	_no_decay_t = 1.5  # brief metabolism grace after eating
 	apply_size()
 	if is_player_controlled:
 		GameState.player_size = size_tier
@@ -358,16 +430,36 @@ func _tick_powers(delta: float) -> void:
 	magnet_t = maxf(magnet_t - delta, 0.0)
 	dash_t = maxf(dash_t - delta, 0.0)
 	dash_cd = maxf(dash_cd - delta, 0.0)
+	ability_cd = maxf(ability_cd - delta, 0.0)
+	spin_t = maxf(spin_t - delta, 0.0)
+	_no_decay_t = maxf(_no_decay_t - delta, 0.0)
+	_tick_metabolism(delta)
 	if _shield:
 		_shield.visible = invincible_t > 0.0
 		if _shield.visible:
 			_shield.rotate_y(delta * 2.0)
 
+# The player slowly shrinks when not eating, so growth must be earned.
+func _tick_metabolism(delta: float) -> void:
+	if not GameState.metabolism or _no_decay_t > 0.0 or size_tier <= 0.6:
+		return
+	size_tier = maxf(0.6, size_tier - size_tier * 0.012 * metabolism_mult * delta)
+	scale = Vector3.ONE * size_tier
+	GameState.player_size = size_tier
+
 func move(delta: float) -> void:
+	# Stunned AI bots can't steer; they coast to a stop.
+	if stun_t > 0.0:
+		stun_t -= delta
+		velocity = velocity.lerp(Vector3.ZERO, 0.2)
+		global_position += velocity * delta
+		global_position = world.clamp_to_world(global_position)
+		_constrain(delta)
+		return
 	var boost := 1.7 if speed_boost_t > 0.0 else 1.0
 	if dash_t > 0.0:
 		boost *= DASH_MULT
-	var spd := base_speed * speed_mult * boost
+	var spd := base_speed * speed_mult * boost * speed_perk_mult
 	var target_vel := desired_dir * spd
 	velocity = velocity.lerp(target_vel, 0.15)
 	global_position += velocity * delta

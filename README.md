@@ -39,6 +39,16 @@ Floating pickups spawn around the world:
 Plus an always-available **Dash** (Ctrl / right-click / on-screen button) on a
 short cooldown — also the way to damage bosses.
 
+### Grow into a build
+- **Metabolism**: you slowly shrink when you're not eating, so growth must be
+  earned (toggle in the lobby).
+- **Type abilities** (Q / E): Walker **ground-pound** (knockback + stun), Roller
+  **spin-dash** (briefly devour near-equal bots), Flyer **dive-bomb** shockwave.
+- **Evolution**: at size milestones you pause and pick a perk — Voracious (eat
+  closer to your size), Sprinter, Quick Dash, Collector, Iron Hide (survive one
+  fatal hit), Efficient (slower shrink), Big Appetite, or Adrenaline. Stack them
+  to shape each run.
+
 ### More to discover
 - **Combos**: chain eats quickly for a rising score multiplier.
 - **Boss bots**: menacing apex predators with a health bar appear over time —
@@ -85,6 +95,7 @@ the browser (`localStorage`) and show on the lobby and game-over screens.
 | Mouse | Look (bot steers where the camera faces) |
 | WASD | Move |
 | Ctrl / Right-click | Dash (short cooldown) |
+| Q / E | Special ability (type-specific) |
 | Space / Shift | Flyer up / down |
 | F1 or V | Toggle first / third person |
 | M | Expand / shrink the radar |

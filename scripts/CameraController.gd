@@ -53,6 +53,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_CTRL and player != null:
 			player.try_dash()
+		elif (event.keycode == KEY_Q or event.keycode == KEY_E) and player != null:
+			player.use_ability()
 		elif event.keycode == KEY_F1 or event.keycode == KEY_V:
 			toggle_view()
 		elif event.keycode == KEY_T:

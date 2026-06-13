@@ -97,6 +97,12 @@ func _ready() -> void:
 	daily.toggled.connect(_on_daily_toggled)
 	root.add_child(daily)
 
+	var metab := CheckButton.new()
+	metab.text = "Metabolism (shrink when not eating)"
+	metab.button_pressed = GameState.metabolism
+	metab.toggled.connect(func(v): GameState.metabolism = v)
+	root.add_child(metab)
+
 	var play := UITheme.make_button("PLAY", UITheme.ACCENT_WARM, Vector2(0, 56))
 	play.add_theme_font_size_override("font_size", 24)
 	play.pressed.connect(_on_play)
